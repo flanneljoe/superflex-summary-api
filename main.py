@@ -34,7 +34,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://your-frontend-domain.com", "http://localhost:5173"],  # dev + prod
+    allow_origins=["https://superflex-summary.pages.dev", "http://localhost:5173"],  # dev + prod
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )

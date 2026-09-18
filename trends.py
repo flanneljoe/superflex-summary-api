@@ -96,6 +96,6 @@ def compute_trend_notes(db: Session, league_id: str, user_id: str, current_week:
         wins = sum(1 for m in past_meetings if
                     (m["user_id_1"] == user_id and m["user_1_points"] > m["user_2_points"]) or
                     (m["user_id_2"] == user_id and m["user_2_points"] > m["user_1_points"]))
-        notes.append(f"is {wins}-{len(past_meetings) - wins} all-time against this opponent")
+        notes.append(f"is {wins}-{len(past_meetings) - wins} against this opponent this season")
 
     return notes
