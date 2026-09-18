@@ -71,6 +71,7 @@ async def get_league_settings(league_id: str) -> dict:
         "season": data["season"],
         "scoring_settings": data["scoring_settings"],
         "roster_positions": data["roster_positions"],
+        "previous_league_id": data["previous_league_id"],
     }
 
 async def get_or_fetch_projections(db: Session, season: str, week: int) -> dict:

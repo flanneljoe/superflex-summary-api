@@ -1,6 +1,6 @@
 from sqlalchemy import text, func, and_, or_
 from sqlalchemy.orm import Session
-from models import LeagueSummary, ProjectionCache, TeamHistory, Matchup
+from models import LeagueSummary, ProjectionCache, TeamHistory, Matchup, KnownLeague, GenerationState
 
 
 
@@ -11,13 +11,28 @@ def get_league_summary(db: Session, league_id: str, week: int):
         .first()
     )
 
+
+def register_known_league(db: Session, league_id: str, season: str, previous_league_id: str | None):
+    db.merge(KnownLeague(league_id=league_id, season=season, previous_league_id=previous_league_id))
+    db.commit()
+
+
 def get_cached_projections(db: Session, season: str, week: int) -> dict | None:
     row = db.query(ProjectionCache).filter_by(season=season, week=week).first()
     return row.data if row else None
 
+
 def get_highest_recorded_week(db: Session, league_id: str) -> int | None:
     result = db.query(func.max(TeamHistory.matchup_week)).filter(TeamHistory.league_id == league_id).scalar()
     return result
+
+
+def get_current_season_league_ids(db: Session) -> list[str]:
+    max_season = db.query(func.max(KnownLeague.season)).scalar()
+    if max_season is None:
+        return []
+    return [row.league_id for row in db.query(KnownLeague).filter(KnownLeague.season == max_season).all()]
+
 
 def store_projections(db: Session, season: str, week: int, data: dict):
     row = ProjectionCache(season=season, week=week, data=data)
@@ -78,3 +93,11 @@ def store_team_history(db: Session, league_id: str, user_id: str, week: int, tea
     db.merge(row)
     db.commit()
 
+
+def get_state(db: Session, key: str) -> str | None:
+    row = db.query(GenerationState).filter_by(key=key).first()
+    return row.value if row else None
+
+def set_state(db: Session, key: str, value: str):
+    db.merge(GenerationState(key=key, value=value))
+    db.commit()

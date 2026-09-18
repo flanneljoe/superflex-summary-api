@@ -126,17 +126,28 @@ def build_llm_payload(weekly_matchups: list[dict]) -> list[dict]:
         })
     return payload
 
-def request_narrative(week: int, weekly_matchups: list[dict]) -> str:
+def request_narrative(week: int, weekly_matchups: list[dict], use_cache: bool = False) -> str:
     payload = build_llm_payload(weekly_matchups)
-    user_message = f"Here is the matchup data for week {week}:\n\n{json.dumps(payload, indent=2)}"
+    user_message = f"This is the matchup data for week {week}:\n\n{json.dumps(payload, indent=2)}"
+
+    if use_cache:
+        system = [
+            {
+                "type": "text",
+                "text": SYSTEM_PROMPT,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+    else:
+        system = SYSTEM_PROMPT
 
     response = client.messages.create(
         model="claude-haiku-4-5",
         max_tokens=2000,
-        system=SYSTEM_PROMPT,
+        system=system,
         messages=[{"role": "user", "content": user_message}],
     )
-    print([block.type for block in response.content])
+
     text_blocks = [block.text for block in response.content if block.type == "text"]
     if not text_blocks:
         raise ValueError(f"No text content in response. Got block types: {[b.type for b in response.content]}")

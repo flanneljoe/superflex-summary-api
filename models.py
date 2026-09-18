@@ -27,7 +27,6 @@ class Matchup(Base):
     )
 
 
-# models.py
 class TeamHistory(Base):
     __tablename__ = "team_histories"
 
@@ -55,7 +54,7 @@ class TeamHistory(Base):
     team_projected_pts = Column(Float)
     team_projection_delta = Column(Float)
 
-# models.py
+
 class ProjectionCache(Base):
     __tablename__ = "projection_cache"
 
@@ -63,3 +62,19 @@ class ProjectionCache(Base):
     week = Column(Integer, primary_key=True)
     fetched_at = Column(DateTime, server_default=func.now())
     data = Column(JSON, nullable=False)
+
+
+class KnownLeague(Base):
+    __tablename__ = "known_leagues"
+
+    league_id = Column(String(64), primary_key=True)
+    season = Column(String(8), nullable=False)
+    previous_league_id = Column(String(64), nullable=True)
+    first_seen_at = Column(DateTime, server_default=func.now())
+
+
+class GenerationState(Base):
+    __tablename__ = "generation_state"
+
+    key = Column(String(64), primary_key=True)  # "last_processed_week"
+    value = Column(String(64), nullable=False)  # extra column incase batch tracking becomes needed

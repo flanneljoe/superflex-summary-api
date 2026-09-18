@@ -1,8 +1,10 @@
 import asyncio
 from sqlalchemy.orm import Session
+
 import sleeper
 import trends
 import queries
+from exceptions import LeagueNotEligibleError, LeagueNotFoundError
 from models import LeagueSummary
 from summarizer import request_narrative
 
@@ -12,6 +14,8 @@ async def build_and_store_weekly_stats(db: Session, league_id: str, week: int) -
     Does not call the LLM or write LeagueSummary; can run on any past week."""
     league_settings = await sleeper.get_league_settings(league_id)
     season = league_settings["season"]
+
+    queries.register_known_league(db, league_id, season, league_settings["previous_league_id"])
 
     players, matchups, rosters, users = await asyncio.gather(
         sleeper.get_players(),
@@ -53,7 +57,7 @@ async def ensure_history_through_week(db: Session, league_id: str, upto_week: in
         await build_and_store_weekly_stats(db, league_id, week)
 
 
-async def build_and_store_weekly_summary(db: Session, league_id: str, week: int) -> str:
+async def build_and_store_weekly_summary(db: Session, league_id: str, week: int, use_cache= False) -> str:
     """Full pipeline for the requested week: backfill anything missing, compute this week's stats,
     generate the narrative, and store LeagueSummary."""
     await ensure_history_through_week(db, league_id, week)
@@ -66,6 +70,25 @@ async def build_and_store_weekly_summary(db: Session, league_id: str, week: int)
 
     return summary_text
 
+
+async def check_and_run_weekly_batch(db: Session):
+    state = await sleeper.get_nfl_state()
+    current_target_week = state["week"] - 1
+    if current_target_week < 1:
+        return  # nothing completed yet this season
+
+    last_processed = queries.get_state(db, "last_processed_week")
+    if last_processed is not None and int(last_processed) >= current_target_week:
+        return  # already handled this week, nothing to do
+
+    league_ids = queries.get_current_season_league_ids(db)
+    for league_id in league_ids:
+        try:
+            await build_and_store_weekly_summary(db, league_id, current_target_week, use_cache=False)
+        except (LeagueNotFoundError, LeagueNotEligibleError):
+            continue
+
+    queries.set_state(db, "last_processed_week", str(current_target_week))
 
 def _attach_trends_and_facts(db, league_id, week, weekly_matchups, players):
     all_scores = [m[side]["points"] for m in weekly_matchups for side in ("team_a", "team_b")]
