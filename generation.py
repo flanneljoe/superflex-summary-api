@@ -1,4 +1,6 @@
 import asyncio
+import httpx
+
 from sqlalchemy.orm import Session
 
 import sleeper
@@ -7,7 +9,8 @@ import queries
 from exceptions import LeagueNotEligibleError, LeagueNotFoundError
 from models import LeagueSummary
 from summarizer import request_narrative
-
+from config import DISCORD_BOT_TOKEN
+from discord_format import format_summary_as_embeds, chunk_embeds
 
 async def build_and_store_weekly_stats(db: Session, league_id: str, week: int) -> list[dict]:
     """Fetches Sleeper data, computes all derived stats/trends, and writes TeamHistory + Matchups.
@@ -84,7 +87,8 @@ async def check_and_run_weekly_batch(db: Session):
     league_ids = queries.get_current_season_league_ids(db)
     for league_id in league_ids:
         try:
-            await build_and_store_weekly_summary(db, league_id, current_target_week, use_cache=False)
+            summary = await build_and_store_weekly_summary(db, league_id, current_target_week, use_cache=False)
+            await post_to_discord_if_subscribed(db, league_id, summary)
         except (LeagueNotFoundError, LeagueNotEligibleError):
             continue
 
@@ -101,3 +105,27 @@ def _attach_trends_and_facts(db, league_id, week, weekly_matchups, players):
 
         team_a["trend_notes"] = trends.compute_trend_notes(db, league_id, team_a["user_id"], week, team_b["user_id"], players)
         team_b["trend_notes"] = trends.compute_trend_notes(db, league_id, team_b["user_id"], week, team_a["user_id"], players)
+
+
+## Discord bot auto-post functions
+
+DISCORD_SUPPRESS_NOTIFICATIONS_FLAG = 4096  # "@silent" to prevent push/desktop notification for this message
+
+async def post_to_discord_if_subscribed(db: Session, league_id: str, summary: str):
+    subs = queries.get_subscriptions_for_league(db, league_id)
+    if not subs:
+        return
+
+    embeds = format_summary_as_embeds(summary)  # Python port of the Worker's format.js logic
+    chunks = chunk_embeds(embeds)               # same port of the chunking logic
+
+    async with httpx.AsyncClient() as client:
+        for sub in subs:
+            for chunk in chunks:
+                resp = await client.post(
+                    f"https://discord.com/api/v10/channels/{sub.channel_id}/messages",
+                    headers={"Authorization": f"Bot {DISCORD_BOT_TOKEN}"},
+                    json={"embeds": chunk, "flags": DISCORD_SUPPRESS_NOTIFICATIONS_FLAG},
+                )
+                if resp.status_code >= 400:
+                    print(f"Discord post failed for league {league_id}, guild {sub.guild_id}: {resp.status_code} {resp.text}")

@@ -7,6 +7,8 @@ from slowapi.errors import RateLimitExceeded
 
 from sqlalchemy.orm import Session
 
+from pydantic import BaseModel
+
 from typing import Optional
 
 from config import ALLOW_WEEK_OVERRIDE
@@ -21,12 +23,6 @@ import sleeper
 
 app = FastAPI()
 
-def get_client_ip(request):
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host  # local dev fallback, no proxy in front
-
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -38,6 +34,12 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+def get_client_ip(request):
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host  # local dev fallback, no proxy in front
 
 
 @app.get("/")
@@ -82,3 +84,38 @@ async def trigger_summary_generation(request: Request, league_id: str, week: Opt
         raise HTTPException(status_code=400, detail=str(e))
 
     return {"status": "generated", "week": week, "summary": summary}
+
+
+## Discord Endpoints
+
+class SubscribeRequest(BaseModel):
+    league_id: str
+    channel_id: str
+    guild_id: str
+
+
+@app.post("/api/discord-subscriptions")
+async def create_subscription(body: SubscribeRequest, db: Session = Depends(get_db)):
+    try:
+        await sleeper.get_league_settings(body.league_id)
+    except LeagueNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except LeagueNotEligibleError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    queries.upsert_discord_subscription(db, body.league_id, body.guild_id, body.channel_id)
+    return {"status": "subscribed"}
+
+
+@app.delete("/api/discord-subscriptions/{league_id}")
+async def remove_subscription(league_id: str, guild_id: str, db: Session = Depends(get_db)):
+    deleted = queries.delete_discord_subscription(db, league_id, guild_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="No matching subscription found")
+    return {"status": "unsubscribed"}
+
+
+@app.get("/api/discord-subscriptions")
+async def get_subscriptions(guild_id: str, db: Session = Depends(get_db)):
+    subs = queries.list_discord_subscriptions_for_guild(db, guild_id)
+    return {"subscriptions": [{"league_id": s.league_id, "channel_id": s.channel_id} for s in subs]}

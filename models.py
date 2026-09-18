@@ -78,3 +78,11 @@ class GenerationState(Base):
 
     key = Column(String(64), primary_key=True)  # "last_processed_week"
     value = Column(String(64), nullable=False)  # extra column incase batch tracking becomes needed
+
+
+class DiscordSubscription(Base):
+    __tablename__ = "discord_subscriptions"
+
+    league_id = Column(String(64), primary_key=True)
+    guild_id = Column(String(64), primary_key=True)  # composite key so that a league can be subscribed to in more than one server
+    channel_id = Column(String(64), nullable=False)

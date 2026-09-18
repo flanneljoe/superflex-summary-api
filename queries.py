@@ -1,6 +1,6 @@
 from sqlalchemy import text, func, and_, or_
 from sqlalchemy.orm import Session
-from models import LeagueSummary, ProjectionCache, TeamHistory, Matchup, KnownLeague, GenerationState
+from models import LeagueSummary, ProjectionCache, TeamHistory, Matchup, KnownLeague, GenerationState, DiscordSubscription
 
 
 
@@ -101,3 +101,25 @@ def get_state(db: Session, key: str) -> str | None:
 def set_state(db: Session, key: str, value: str):
     db.merge(GenerationState(key=key, value=value))
     db.commit()
+
+
+def upsert_discord_subscription(db: Session, league_id: str, guild_id: str, channel_id: str):
+    db.merge(DiscordSubscription(league_id=league_id, guild_id=guild_id, channel_id=channel_id))
+    db.commit()
+
+
+def delete_discord_subscription(db: Session, league_id: str, guild_id: str) -> bool:
+    row = db.query(DiscordSubscription).filter_by(league_id=league_id, guild_id=guild_id).first()
+    if not row:
+        return False
+    db.delete(row)
+    db.commit()
+    return True
+
+
+def list_discord_subscriptions_for_guild(db: Session, guild_id: str) -> list[DiscordSubscription]:
+    return db.query(DiscordSubscription).filter_by(guild_id=guild_id).all()
+
+
+def get_subscriptions_for_league(db: Session, league_id: str) -> list[DiscordSubscription]:
+    return db.query(DiscordSubscription).filter_by(league_id=league_id).all()

@@ -143,7 +143,7 @@ def request_narrative(week: int, weekly_matchups: list[dict], use_cache: bool = 
 
     response = client.messages.create(
         model="claude-haiku-4-5",
-        max_tokens=2000,
+        max_tokens=3000,
         system=system,
         messages=[{"role": "user", "content": user_message}],
     )
